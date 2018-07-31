@@ -43,6 +43,8 @@ class Agent:
     def update_target_network(self):
         # copy current_network to target network
         self.target_network.load_state_dict(self.Q_network.state_dict())
+        for p in self.target_network.parameters():
+            p.requires_grad = False
 
     def update_Q_network(self, state, action, reward, state_new):
         state = state_to_tensor_to_state(state)
@@ -54,8 +56,8 @@ class Agent:
         # state_new = Variable(state_new).cuda()
         # terminal = Variable(terminal).cuda()
         # reward = Variable(reward).cuda()
-        # self.Q_network.eval()
-        # self.target_network.eval()
+        self.Q_network.eval()
+        self.target_network.eval()
 
         # use current network to evaluate action argmax_a' Q_current(s', a')_
         action_new = self.Q_network(state_new).max(dim=1)[1].cpu().data.view(-1, 1)
@@ -69,10 +71,13 @@ class Agent:
         self.Q_network.train()
         Q = (self.Q_network(state)*action).sum(dim=1)
         loss = mse_loss(input=Q, target=y.detach())
+        # loss = F.smooth_l1_loss(input=Q, target=y.detach())
 
         # backward optimize
         self.optimizer.zero_grad()
         loss.backward()
+        for param in self.Q_network.parameters():
+            param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
         return loss.item()
@@ -82,6 +87,7 @@ class Agent:
         # state = Variable(state).cuda()
 
         self.Q_network.eval()
+        self.exploer_network.eval()
         estimate = self.Q_network(state).max(dim=1)
 
         state_dict = copy.deepcopy(self.Q_network.state_dict())
@@ -93,13 +99,15 @@ class Agent:
         for k, nv in zip(state_dict.keys(), params_values):
             state_dict[k] = nv
         self.exploer_network.load_state_dict(state_dict)
+        for p in self.exploer_network.parameters():
+            p.requires_grad = False
         estimate_prime = self.exploer_network(state).max(dim=1)
         # with epsilon prob to choose random action else choose argmax Q estimate action
         # TODO: learn probabilistic interleave
         if random.random() > .5:
-            return estimate[1].data[0]
+            return estimate[1].item()
         else:
-            return estimate_prime[1].data[0]
+            return estimate_prime[1].item()
 
     def save(self, step, logs_path):
         os.makedirs(logs_path, exist_ok=True)

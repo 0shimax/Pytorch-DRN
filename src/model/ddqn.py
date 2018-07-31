@@ -13,7 +13,8 @@ class ValueNet(nn.Module):
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
-            nn.ReLU())
+            nn.ReLU(),
+            nn.Dropout())
         self.fc1 = nn.Sequential(
             nn.Linear(64, 256),
             nn.ReLU())
@@ -41,7 +42,8 @@ class AdvantageNet(nn.Module):
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
-            nn.ReLU())
+            nn.ReLU(),
+            nn.Dropout())
         self.fc1 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU())

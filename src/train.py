@@ -59,6 +59,7 @@ def main():
 
             # state s is represented by context features and user features
             action = agent.take_action(state)
+            # print(action)
             reward = env.act(action_set[action], state[1])
             state_new = state
             action_onehot = np.zeros(len(action_set))
