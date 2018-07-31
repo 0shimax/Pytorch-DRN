@@ -6,26 +6,24 @@ class ValueNet(nn.Module):
     def __init__(self, action_num):
         super().__init__()
         self.fcb1 = nn.Sequential(
-            nn.Linear(4, 32),
+            nn.Linear(7, 192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(32, 64),
+            nn.Linear(192, 64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
             nn.ReLU())
         self.fc1 = nn.Sequential(
-            nn.Linear(7*7*64, 256),
+            nn.Linear(64, 256),
             nn.ReLU())
-        self.fc2 = nn.Linear(256, action_num)
+        self.fc2 = nn.Linear(64, action_num)
 
     def forward(self, user_feature):
-        print("ValueNet:", user_feature)
-        print(type(user_feature))
         h = self.fcb1(user_feature)
         h = self.fcb2(h)
         h = self.fcb3(h)
-        h = self.fc1(h.view(-1, 7*7*64))
+        # h = self.fc1(h.view(-1, 7*7*64))
         out = self.fc2(h)
         return out
 
@@ -33,29 +31,29 @@ class ValueNet(nn.Module):
 class AdvantageNet(nn.Module):
     def __init__(self, action_num):
         super().__init__()
-        content_size, embedding_dim = 2, 32
-        self.embeddings = nn.Embedding(content_size, embedding_dim)
+        content_size, self.embedding_dim = 2, 32
+        self.embeddings = nn.Embedding(content_size, self.embedding_dim)
         self.fcb1 = nn.Sequential(
-            nn.Linear(4, 32),
+            nn.Linear(7+32, 192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(32, 64),
+            nn.Linear(192, 64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
             nn.ReLU())
         self.fc1 = nn.Sequential(
-            nn.Linear(7*7*64, 256),
+            nn.Linear(64, 32),
             nn.ReLU())
-        self.fc2 = nn.Linear(256, action_num)
+        self.fc2 = nn.Linear(64, action_num)
 
     def forward(self, user_feature, content_id):
-        emb = self.embeddings(content_id)
+        emb = self.embeddings(content_id).view(-1, self.embedding_dim)
         h = torch.cat((user_feature, emb), 1)
         h = self.fcb1(h)
         h = self.fcb2(h)
         h = self.fcb3(h)
-        h = self.fc1(h.view(-1, 7*7*64))
+        # h = self.fc1(h.view(-1, 7*7*64))
         out = self.fc2(h)
         return out
 
@@ -74,7 +72,7 @@ class Model(nn.Module):
         user_feature, content_id = observation
         v = self.value_net(user_feature)
         a = self.advantage_net(user_feature, content_id)
-        q = v + (a - a.mean(axis=0))
+        q = v + (a - a.mean(dim=0))
         return q
 
     def save(self, path, step, optimizer):

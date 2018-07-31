@@ -19,17 +19,16 @@ class ReplyBuffer(object):
             [], [], [], [], []
 
         for b in batch:
-            batch_state.append(b[0][0])
+            batch_state.append(b[0])
             batch_action.append(b[1])
             batch_reward.append(b[2])
-            batch_state_new.append(b[3][0])
-            batch_over.append(float(not b[4]))
+            batch_state_new.append(b[3])
+            # batch_over.append(float(not b[4]))
 
         batch_state = np.stack(batch_state)
         batch_action = np.stack(batch_action)
         batch_reward = np.stack(batch_reward)
         batch_state_new = np.stack(batch_state_new)
-        batch_over = np.stack(batch_over)
+        # batch_over = np.stack(batch_over)
 
-        return (batch_state, batch_action, batch_reward,
-                batch_state_new, batch_over)
+        return (batch_state, batch_action, batch_reward, batch_state_new)

@@ -7,8 +7,8 @@ import random
 class Viewer(object):
     def __init__(self, gender='male'):
         self.gender = gender
-        self.male_features = [23, 10, 1, 0, 0, 1, 0]
-        self.female_features = [23, 10, 0, 1, 0, 0, 1]
+        self.male_features = np.array([23, 10, 1, 0, 0, 1, 0], dtype=np.float32)
+        self.female_features = np.array([23, 10, 0, 1, 0, 0, 1], dtype=np.float32)
         self.high_click = 1. if uniform(0, 1.0) > 0.3 else -1
         self.low_click = 1. if uniform(0, 1.0) > 0.7 else -1
 
@@ -55,8 +55,7 @@ class Environment(object):
     def generate_gender(self):
         return 'male' if uniform(0, 1.0) > 0.5 else 'female'
 
-    def act(self, state):
-        ad_id, news = state
+    def act(self, ad_id, news):
         # return reward
         if self.viewer.view(ad_id, news) > 0:
             return 1.

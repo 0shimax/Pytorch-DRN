@@ -51,14 +51,14 @@ def main():
         agent.restore(restore)
 
     for episode in range(1, Config.total_episode+1):
-        for _ in range(30):
+        for _ in range(200):
             state = env.obs()
             t_alive = 0
             total_reward = 0
 
             # state s is represented by context features and user features
             action = agent.take_action(state)
-            reward = env.act(action_set[action])
+            reward = env.act(action_set[action], state[1])
             state_new = state
             action_onehot = np.zeros(len(action_set))
             action_onehot[action] = 1
@@ -78,12 +78,12 @@ def main():
                 agent.update_target_network()
 
             # sample batch from reply buffer
-            batch_state, batch_action, batch_reward, batch_state_new, batch_over =\
+            batch_state, batch_action, batch_reward, batch_state_new =\
                 reply_buffer.sample(Config.batch_size)
 
             # update policy network
             loss = agent.update_Q_network(
-                batch_state, batch_action, batch_reward, batch_state_new, batch_over)
+                batch_state, batch_action, batch_reward, batch_state_new)
 
             loss_logs.extend([[episode, loss]])
             reward_logs.extend([[episode, total_reward]])
@@ -91,8 +91,6 @@ def main():
             # print reward and loss
             if episode % Config.show_loss_frequency == 0:
                 print('Episode: {} t: {} Reward: {:.3f} Loss: {:.3f}' .format(episode, t_alive, total_reward, loss))
-
-            agent.update_epsilon()
 
 
 if __name__ == "__main__":
