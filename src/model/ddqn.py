@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from model.swichable_normalization import SwitchNorm1d
 
 
 class ValueNet(nn.Module):
@@ -7,12 +8,15 @@ class ValueNet(nn.Module):
         super().__init__()
         self.fcb1 = nn.Sequential(
             nn.Linear(7, 192),
+            SwitchNorm1d(192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
             nn.Linear(192, 64),
+            SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
+            SwitchNorm1d(64),
             nn.ReLU(),
             nn.Dropout())
         self.fc1 = nn.Sequential(
@@ -32,16 +36,19 @@ class ValueNet(nn.Module):
 class AdvantageNet(nn.Module):
     def __init__(self, action_num):
         super().__init__()
-        content_size, self.embedding_dim = 2, 32
+        content_size, self.embedding_dim = 2, 2
         self.embeddings = nn.Embedding(content_size, self.embedding_dim)
         self.fcb1 = nn.Sequential(
-            nn.Linear(7+32, 192),
+            nn.Linear(7+self.embedding_dim, 192),
+            SwitchNorm1d(192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
             nn.Linear(192, 64),
+            SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
+            SwitchNorm1d(64),
             nn.ReLU(),
             nn.Dropout())
         self.fc1 = nn.Sequential(

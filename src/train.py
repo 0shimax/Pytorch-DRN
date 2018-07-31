@@ -54,7 +54,7 @@ def main():
         t_alive = 0
         total_reward = 0
 
-        for _ in range(200):
+        for _ in range(100):
             state = env.obs()
 
             # state s is represented by context features and user features

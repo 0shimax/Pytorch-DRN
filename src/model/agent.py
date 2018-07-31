@@ -1,5 +1,5 @@
 import torch
-from torch.nn.functional import mse_loss
+import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
 import random
@@ -27,7 +27,7 @@ def state_to_tensor_to_state(state):
 
 
 class Agent:
-    def __init__(self, action_set, explore_coef=.2):
+    def __init__(self, action_set, explore_coef=.5):
         self.explore_coef = explore_coef
         self.action_set = action_set
         self.action_number = len(action_set)
@@ -65,19 +65,18 @@ class Agent:
         action_new_onehot = Variable(action_new_onehot.scatter_(1, action_new, 1.0))  # .cuda()
 
         # use target network to evaluate value y = r + discount_factor * Q_tar(s', a')
-        y = (reward + torch.mul(((self.target_network(state_new)*action_new_onehot).sum(dim=1)), Config.discount_factor))
-
+        y = reward + Config.discount_factor*(self.target_network(state_new)*action_new_onehot).sum(dim=1)
         # regression Q(s, a) -> y
         self.Q_network.train()
         Q = (self.Q_network(state)*action).sum(dim=1)
-        loss = mse_loss(input=Q, target=y.detach())
-        # loss = F.smooth_l1_loss(input=Q, target=y.detach())
+        # loss = F.mse_loss(input=Q, target=y.detach())
+        loss = F.smooth_l1_loss(input=Q, target=y.detach())
 
         # backward optimize
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.Q_network.parameters():
-            param.grad.data.clamp_(-1, 1)
+            param.data.clamp_(-1, 1)
         self.optimizer.step()
 
         return loss.item()
@@ -103,8 +102,7 @@ class Agent:
             p.requires_grad = False
         estimate_prime = self.exploer_network(state).max(dim=1)
         # with epsilon prob to choose random action else choose argmax Q estimate action
-        # TODO: learn probabilistic interleave
-        if random.random() > .5:
+        if random.random() > .7:
             return estimate[1].item()
         else:
             return estimate_prime[1].item()
