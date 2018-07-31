@@ -51,10 +51,11 @@ def main():
         agent.restore(restore)
 
     for episode in range(1, Config.total_episode+1):
+        t_alive = 0
+        total_reward = 0
+
         for _ in range(200):
             state = env.obs()
-            t_alive = 0
-            total_reward = 0
 
             # state s is represented by context features and user features
             action = agent.take_action(state)

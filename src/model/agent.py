@@ -75,7 +75,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
 
-        return loss.data[0]
+        return loss.item()
 
     def take_action(self, state):
         state = state_to_tensor_to_state(state)
