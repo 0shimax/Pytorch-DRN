@@ -19,12 +19,12 @@ EPS_DECAY = 200
 def prepare_networks(n_action, device):
     policy_net = Model(n_action).to(device)
     target_net = Model(n_action).to(device)
-    exploer_net = Model(n_action).to(device)
+    explore_net = Model(n_action).to(device)
     target_net.load_state_dict(policy_net.state_dict())
-    exploer_net.load_state_dict(policy_net.state_dict())
+    explore_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
-    exploer_net.eval()
-    return policy_net, target_net, exploer_net
+    explore_net.eval()
+    return policy_net, target_net, explore_net
 
 
 class Agent(object):
@@ -32,7 +32,7 @@ class Agent(object):
         # if gpu is to be used
         self.device =\
             torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_net, self.target_net, self.exploer_net =\
+        self.policy_net, self.target_net, self.explore_net =\
             prepare_networks(n_action, self.device)
         # self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
@@ -59,9 +59,9 @@ class Agent(object):
                     params_values[i] + params_values[i]*torch.randn(1)*self.explore_coef
             for k, nv in zip(state_dict.keys(), params_values):
                 state_dict[k] = nv
-            self.exploer_net.load_state_dict(state_dict)
+            self.explore_net.load_state_dict(state_dict)
             with torch.no_grad():
-                return self.exploer_net(state).max(1)[1].view(1, 1)
+                return self.explore_net(state).max(1)[1].view(1, 1)
 
     def select_action_eager(self, state):
         sample = random.random()
