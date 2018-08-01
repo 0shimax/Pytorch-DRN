@@ -37,7 +37,7 @@ def main():
     restore = args.restore
     train = args.train
 
-    env = Environment(n_action=10)
+    env = Environment(n_action=2)
     action_set = env.get_action_set()
 
     reply_buffer = ReplyBuffer(Config.reply_buffer_size)
@@ -54,26 +54,26 @@ def main():
         t_alive = 0
         total_reward = 0
 
-        for _ in range(100):
-            state = env.obs()
+        state = env.obs()
 
-            # state s is represented by context features and user features
-            action = agent.take_action(state)
-            # print(action)
-            reward = env.act(action_set[action], state[1])
-            state_new = state
-            action_onehot = np.zeros(len(action_set))
-            action_onehot[action] = 1
-            t_alive += 1
-            total_reward += reward
-            reply_buffer.append((state, action_onehot, reward, state_new))
+        # state s is represented by context features and user features
+        action = agent.take_action(state)
+        # print(action)
+        # print(action)
+        reward = env.act(action_set[action], state[1])
+        state_new = (np.zeros_like(state[0]), state[1])
+        action_onehot = np.zeros(len(action_set))
+        action_onehot[action] = 1
+        t_alive += 1
+        total_reward += reward
+        reply_buffer.append((state, action_onehot, reward, state_new))
 
         if episode > Config.initial_observe_episode and train:
             # save model
-            if episode % Config.save_logs_frequency == 0:
-                agent.save(episode, logs_path)
-                np.save(os.path.join(logs_path, 'loss.npy'), np.array(loss_logs))
-                np.save(os.path.join(logs_path, 'reward.npy'), np.array(reward_logs))
+            # if episode % Config.save_logs_frequency == 0:
+            #     agent.save(episode, logs_path)
+            #     np.save(os.path.join(logs_path, 'loss.npy'), np.array(loss_logs))
+            #     np.save(os.path.join(logs_path, 'reward.npy'), np.array(reward_logs))
 
             # update target network
             if episode % Config.update_target_frequency == 0:

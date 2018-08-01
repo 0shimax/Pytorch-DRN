@@ -27,7 +27,7 @@ def state_to_tensor_to_state(state):
 
 
 class Agent:
-    def __init__(self, action_set, explore_coef=.5):
+    def __init__(self, action_set, explore_coef=.1):
         self.explore_coef = explore_coef
         self.action_set = action_set
         self.action_number = len(action_set)
@@ -38,13 +38,14 @@ class Agent:
         self.Q_network = Model(self.action_number)  # .cuda()
         self.target_network = Model(self.action_number)  # .cuda()
         self.exploer_network = Model(self.action_number)  # .cuda()
+        self.target_network.eval()
+        self.exploer_network.eval()
         self.optimizer = optim.Adam(self.Q_network.parameters(), lr=Config.lr)
+
 
     def update_target_network(self):
         # copy current_network to target network
         self.target_network.load_state_dict(self.Q_network.state_dict())
-        for p in self.target_network.parameters():
-            p.requires_grad = False
 
     def update_Q_network(self, state, action, reward, state_new):
         state = state_to_tensor_to_state(state)
@@ -57,7 +58,6 @@ class Agent:
         # terminal = Variable(terminal).cuda()
         # reward = Variable(reward).cuda()
         self.Q_network.eval()
-        self.target_network.eval()
 
         # use current network to evaluate action argmax_a' Q_current(s', a')_
         action_new = self.Q_network(state_new).max(dim=1)[1].cpu().data.view(-1, 1)
@@ -85,9 +85,8 @@ class Agent:
         state = state_to_tensor_to_state(state)
         # state = Variable(state).cuda()
 
-        self.Q_network.eval()
-        self.exploer_network.eval()
-        estimate = self.Q_network(state).max(dim=1)
+        with torch.no_grad():
+            estimate = self.Q_network(state).max(dim=1)
 
         state_dict = copy.deepcopy(self.Q_network.state_dict())
         # print(state_dict)
@@ -98,11 +97,12 @@ class Agent:
         for k, nv in zip(state_dict.keys(), params_values):
             state_dict[k] = nv
         self.exploer_network.load_state_dict(state_dict)
-        for p in self.exploer_network.parameters():
-            p.requires_grad = False
-        estimate_prime = self.exploer_network(state).max(dim=1)
+        # for p in self.exploer_network.parameters():
+        #     p.requires_grad = False
+        with torch.no_grad():
+            estimate_prime = self.exploer_network(state).max(dim=1)
         # with epsilon prob to choose random action else choose argmax Q estimate action
-        if random.random() > .7:
+        if random.random() > .5:
             return estimate[1].item()
         else:
             return estimate_prime[1].item()

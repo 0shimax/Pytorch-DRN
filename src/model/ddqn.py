@@ -17,8 +17,7 @@ class ValueNet(nn.Module):
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
             SwitchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout())
+            nn.ReLU())
         self.fc1 = nn.Sequential(
             nn.Linear(64, 256),
             nn.ReLU())
@@ -36,7 +35,7 @@ class ValueNet(nn.Module):
 class AdvantageNet(nn.Module):
     def __init__(self, action_num):
         super().__init__()
-        content_size, self.embedding_dim = 2, 2
+        content_size, self.embedding_dim = 2, 1
         self.embeddings = nn.Embedding(content_size, self.embedding_dim)
         self.fcb1 = nn.Sequential(
             nn.Linear(7+self.embedding_dim, 192),
@@ -49,8 +48,7 @@ class AdvantageNet(nn.Module):
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 64),
             SwitchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout())
+            nn.ReLU())
         self.fc1 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU())
