@@ -42,7 +42,6 @@ class Agent:
         self.exploer_network.eval()
         self.optimizer = optim.Adam(self.Q_network.parameters(), lr=Config.lr)
 
-
     def update_target_network(self):
         # copy current_network to target network
         self.target_network.load_state_dict(self.Q_network.state_dict())

@@ -6,7 +6,6 @@ from config import Config
 from model.reply_buffer import ReplyBuffer
 from model.agent import Agent
 from model.environment import Environment
-# from utils import *
 
 
 def parse_args():
