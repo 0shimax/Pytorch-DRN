@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from collections import defaultdict
 from itertools import count
 
 import torch
@@ -13,7 +14,7 @@ TARGET_UPDATE = 10
 
 
 def main():
-    n_action = 2
+    n_action = 10
     agent = Agent(n_action)
     env = Environment(n_action)
 
@@ -21,12 +22,16 @@ def main():
     for i_episode in range(num_episodes):
         t_reword = 0
         t_loss = 0
+        results = np.zeros((2, n_action))
         state = torch.FloatTensor([env.obs()])
         for t in count():
             # Select and perform an action
             action = agent.select_action(state)
             reward, done = env.step(action.item(), t)
             reward = torch.tensor([reward], device=agent.device)
+
+            g_idx = 0 if env.viewer.gender=='male' else 1
+            results[g_idx, action.item()] += reward[0].item()
 
             # Observe new state
             if not done:
@@ -52,6 +57,7 @@ def main():
                 break
         if i_episode % TARGET_UPDATE == 0:
             print('Episode: {} Reward: {:.3f} Loss: {:.3f}'.format(i_episode, t_reword, t_loss))
+            # print(results)
         # Update the target network
         if i_episode % TARGET_UPDATE == 0:
             agent.update_target_network()

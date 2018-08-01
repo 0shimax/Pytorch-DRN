@@ -56,7 +56,7 @@ class Environment(object):
         else:
             return 0.
 
-    def step(self, ad_id, t_cnt, threshold=10):
+    def step(self, ad_id, t_cnt, threshold=50):
         done = True if t_cnt >= threshold-1 else False
         # return reward
         if self.viewer.view(ad_id) > 0:

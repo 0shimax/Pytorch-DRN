@@ -28,7 +28,8 @@ class Agent(object):
         self.device =\
             torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy_net, self.target_net = prepare_networks(n_action, self.device)
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        # self.optimizer = optim.RMSprop(self.policy_net.parameters())
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
         self.memory = ReplayMemory(10000)
         self.n_action = n_action
         self.steps_done = 0
