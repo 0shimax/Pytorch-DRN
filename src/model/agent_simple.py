@@ -28,7 +28,7 @@ def prepare_networks(n_action, device):
 
 
 class Agent(object):
-    def __init__(self, n_action=10):
+    def __init__(self, n_action=10, uniform_range=10):
         # if gpu is to be used
         self.device =\
             torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -40,26 +40,25 @@ class Agent(object):
         self.n_action = n_action
         self.steps_done = 0
         self.explore_coef = .1
+        self.eta = .05
+        self.uniform_range = uniform_range
 
     def select_action(self, state):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
             math.exp(-1. * self.steps_done / EPS_DECAY)
+        # TODO: add decay uniform_range
+        # self.uniform_range *=  eps_threshold
         self.steps_done += 1
 
         if sample > eps_threshold:
+            # print("genereate from policy net")
             with torch.no_grad():
                 return self.policy_net(state).max(1)[1].view(1, 1)
         else:
-            # TODO: ここ修正
-            state_dict = copy.deepcopy(self.policy_net.state_dict())
-            params_values = list(state_dict.values())
-            for i in range(len(params_values)):
-                params_values[i] =\
-                    params_values[i] + params_values[i]*torch.randn(1)*self.explore_coef
-            for k, nv in zip(state_dict.keys(), params_values):
-                state_dict[k] = nv
-            self.explore_net.load_state_dict(state_dict)
+            # print("genereate from explore net----------------------")
+            # TODO: need to modify
+            self.replace_explore_net_wieht_values()
             with torch.no_grad():
                 return self.explore_net(state).max(1)[1].view(1, 1)
 
@@ -123,3 +122,28 @@ class Agent(object):
 
     def update_target_network(self):
         self.target_net.load_state_dict(self.policy_net.state_dict())
+
+    def replace_explore_net_wieht_values(self):
+        state_dict = copy.deepcopy(self.policy_net.state_dict())
+        params_values = list(state_dict.values())
+        for i in range(len(params_values)):
+            rand_val = torch.zeros(1).uniform_(
+                -self.uniform_range, self.uniform_range)
+            params_values[i] =\
+                params_values[i] +\
+                params_values[i] * rand_val * self.explore_coef
+        for k, nv in zip(state_dict.keys(), params_values):
+            state_dict[k] = nv
+        self.explore_net.load_state_dict(state_dict)
+
+    def update_target_network_with_explore_net(self):
+        policy_state_dict = copy.deepcopy(self.policy_net.state_dict())
+        explore_state_dict = copy.deepcopy(self.explore_net.state_dict())
+        policy_params_values = list(policy_state_dict.values())
+        explore_params_values = list(explore_state_dict.values())
+        for i in range(len(policy_params_values)):
+            policy_params_values[i] =\
+                policy_params_values[i] + explore_params_values[i]*self.eta
+        for k, nv in zip(policy_state_dict.keys(), policy_params_values):
+            policy_state_dict[k] = nv
+        self.target_net.load_state_dict(policy_state_dict)

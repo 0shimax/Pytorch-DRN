@@ -45,6 +45,7 @@ def main():
         for t in count():
             # Select and perform an action
             action = agent.select_action(state)
+            # print(env.viewer.gender, action)
             reward, done = env.step(action.item(), t)
             reward = torch.tensor([reward], device=agent.device)
 
