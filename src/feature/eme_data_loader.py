@@ -71,12 +71,47 @@ def calculate_target_features(df):
     return one_hotte(target_features)
 
 
+def calcurate_target_clicked(df):
+    result = df[['target_user_id', 'label']]\
+        .groupby('target_user_id')\
+        .agg(['sum', 'count'])\
+        .reset_index()
+    result.columns = ['target_user_id', 'label_sum', 'label_cnt']
+    result = result.assign(label_rate=result.label_sum/result.label_cnt)
+    result.index = df.groupby('target_user_id').head(1).index
+    return result
+
+
+def get_target_ids_for_input(target_clicked_rate,
+                             valued_target_ids, n_high, n_low):
+    n_total = n_high + n_low
+    valued_target_flag = target_clicked_rate.target_user_id.isin(valued_target_ids)
+    high_rate_flag = target_clicked_rate.label_rate > 0
+    query = (valued_target_flag) & (high_rate_flag)
+    valued_target_ids = target_clicked_rate[query].target_user_id.values
+    if len(valued_target_ids) >= n_total:
+        return valued_target_ids[:n_total]
+
+    n_rest = n_total - len(valued_target_ids)
+    m_n_high = int(n_rest * n_high / n_total)
+    m_n_low = n_rest - m_n_high
+    query = high_rate_flag & ~query
+    hight = target_clicked_rate[query].sample(m_n_high).target_user_id.values
+    low = target_clicked_rate[
+        target_clicked_rate.label_rate == 0].sample(m_n_low).target_user_id.values
+    ids = np.concatenate([valued_target_ids, hight, low])
+    return ids
+
+
 class OwnDataset(Dataset):
-    def __init__(self, file_name, root_dir, subset=False, transform=None):
+    def __init__(self, file_name, root_dir, n_high, n_low,
+                 subset=False, transform=None):
         super().__init__()
         self.file_name = file_name
         self.root_dir = root_dir
         self.transform = transform
+        self.n_high = n_high
+        self.n_low = n_low
         self.prepare_data()
         self.user_features_orig = self.user_features
 
@@ -90,6 +125,8 @@ class OwnDataset(Dataset):
         data_path = Path(self.root_dir, self.file_name)
         self.eme_data = pd.read_csv(data_path)
 
+        self.target_clicked_rate = calcurate_target_clicked(self.eme_data)
+
         self.user_and_target_ids = get_id_columns(self.eme_data)
         self.rewards = self.eme_data.label.astype(int)
 
@@ -97,31 +134,46 @@ class OwnDataset(Dataset):
         self.eme_data = drop_raws(self.eme_data)
 
         self.user_features = calculate_user_features(self.eme_data)
-        print(self.user_features.columns.values)
         self.target_features = calculate_target_features(self.eme_data)
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values
-        user_id, target_id = ids[0], ids[1]
+        current_user_id = ids[0]
+        current_user_id = 444532
         # reward = self.rewards.iloc[idx]
 
-        user_feature = self.user_features[self.user_features.user_id == user_id]
+        user_feature = self.user_features[self.user_features.user_id == current_user_id]
         user_feature =\
             user_feature.copy().drop("user_id", axis=1).astype(np.float32).values
+        user_feature = user_feature.reshape(-1)
 
-        target_feature =\
-            self.target_features[self.target_features.target_user_id==target_id]
-        target_feature =\
-            target_feature.copy().drop("target_user_id", axis=1).astype(np.float32).values
+        valued_target_ids =\
+            self.user_and_target_ids[self.user_and_target_ids.user_id == current_user_id].target_user_id.values
+        target_ids = get_target_ids_for_input(
+            self.target_clicked_rate, valued_target_ids, self.n_high, self.n_low)
+        target_features = self.target_features[
+            self.target_features.target_user_id.isin(target_ids)]
+        target_features =\
+            target_features.copy().drop("target_user_id", axis=1).astype(np.float32).values
 
-        return torch.FloatTensor(user_feature)  #, torch.FloatTensor(target_feature)
+        return (torch.FloatTensor(user_feature),
+                torch.FloatTensor(target_features),
+                current_user_id,
+                target_ids)
 
-    def get_reward(self, user_id, target_id):
-        query_user = self.user_and_target_ids.user_id==user_id
-        query_target = self.user_and_target_ids.target_user_id==target_id
-        query = query_user & query_target
+    def get_reward(self, current_user_id, target_id):
+        # target_id = self.target_features.target_user_id.iloc[target_action_id]
+
+        # print("ids:", int(current_user_id), target_id)
+        query_user = self.user_and_target_ids.user_id == current_user_id
+        query_target = self.user_and_target_ids.target_user_id == target_id
+        query = (query_user) & (query_target)
+
         idx = self.user_and_target_ids[query].index
-        return self.rewards.loc[idx].values[0]
+        if len(idx) == 0:
+            return 0.
+        else:
+            return float(self.rewards.loc[idx].values[0])
 
 def loader(dataset, batch_size, shuffle=True):
     loader = torch.utils.data.DataLoader(

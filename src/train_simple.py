@@ -35,39 +35,37 @@ root_dir = './raw'
 
 
 def main():
-    n_action = 2
-    agent = Agent(n_action)
-    env = Environment(file_name, root_dir)
+    # n_action = 2
+    n_target = 50
+    env = Environment(file_name, root_dir, n_target=n_target, max_step=20)
+    agent = Agent(env.dim_in_feature, n_target)  #, env.n_action)
 
     num_episodes = 5000
     for i_episode in range(num_episodes):
         t_reword = 0
         t_loss = 0
-        state = env.obs()
         for t in count():
+            state, target_features, current_user_id, target_ids = env.obs()
             # Select and perform an action
-            action = agent.select_action(state)
-            # print(env.viewer.gender, action)
-            reward, done = env.step(action.item(), t)
+            action = agent.select_action(state, target_features)
+            action = target_ids[0][action.item()]
+            reward, done = env.step(current_user_id, action.item(), t)
             reward = torch.tensor([reward], device=agent.device)
 
             # Observe new state
             if not done:
                 # next_state = state.clone()
-                next_state = env.obs()
+                next_state = state
             else:
                 next_state = None
 
             # Store the transition in memory
-            agent.memory.push(state, action, next_state, reward)
-
-            # Move to the next state
-            state = next_state
+            agent.memory.push(state, target_features, action, next_state, reward)
 
             # Perform one step of the optimization (on the target network)
             loss = agent.optimize_model()
+            t_reword += reward.data.item()
             if loss:
-                t_reword += reward.data.item()
                 t_loss += loss
                 # print reward and loss
             if done:

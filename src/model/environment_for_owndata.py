@@ -7,10 +7,15 @@ from feature.eme_data_loader import OwnDataset, loader
 
 
 class Environment(object):
-    def __init__(self, file_name, root_dir):
-        self.dataset = OwnDataset(file_name, root_dir)
+    def __init__(self, file_name, root_dir,
+                 n_target=100, high_rate=.7, max_step=20):
+        n_high = int(n_target*high_rate)
+        n_low = n_target - n_high
+        self.dataset = OwnDataset(file_name, root_dir, n_high, n_low)
         self.n_action = len(self.dataset.target_features)
-        self.data_loader = iter(loader(self.dataset, 1))
+        self.dim_in_feature = len(self.dataset.user_features.iloc[0]) - 1
+        self.data_loader = loader(self.dataset, 1)
+        self.max_step = max_step
 
     def reset(self):
         self.dataset.reset()
@@ -19,9 +24,9 @@ class Environment(object):
         return np.arange(self.n_action)
 
     def obs(self):
-        return self.data_loader.next()
+        return next(iter(self.data_loader))
 
-    def step(self, user_id, target_id, t_cnt, threshold=100):
-        done = True if t_cnt >= threshold-1 else False
-        reward = self.dataset.get_reward(user_id, target_id)
+    def step(self, current_user_id, target_id, t_cnt):
+        done = True if t_cnt >= self.max_step - 1 else False
+        reward = self.dataset.get_reward(current_user_id, target_id)
         return reward, done

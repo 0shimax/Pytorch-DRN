@@ -9,17 +9,17 @@ from model.dqn import DQN
 from model.ddqn import Model
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16  # 128
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 
 
-def prepare_networks(n_action, device):
-    policy_net = Model(n_action).to(device)
-    target_net = Model(n_action).to(device)
-    explore_net = Model(n_action).to(device)
+def prepare_networks(dim_in_feature, n_action, device):
+    policy_net = Model(dim_in_feature, n_action).to(device)
+    target_net = Model(dim_in_feature, n_action).to(device)
+    explore_net = Model(dim_in_feature, n_action).to(device)
     target_net.load_state_dict(policy_net.state_dict())
     explore_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
@@ -28,12 +28,12 @@ def prepare_networks(n_action, device):
 
 
 class Agent(object):
-    def __init__(self, n_action=10, uniform_range=10):
+    def __init__(self, dim_in_feature, n_action=10, uniform_range=10):
         # if gpu is to be used
         self.device =\
             torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy_net, self.target_net, self.explore_net =\
-            prepare_networks(n_action, self.device)
+            prepare_networks(dim_in_feature, n_action, self.device)
         # self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
         self.memory = ReplayMemory(10000)
@@ -43,7 +43,7 @@ class Agent(object):
         self.eta = .05
         self.uniform_range = uniform_range
 
-    def select_action(self, state):
+    def select_action_explore_net(self, state, target_features):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
             math.exp(-1. * self.steps_done / EPS_DECAY)
@@ -62,14 +62,14 @@ class Agent(object):
             with torch.no_grad():
                 return self.explore_net(state).max(1)[1].view(1, 1)
 
-    def select_action_eager(self, state):
+    def select_action(self, state, target_features):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
             math.exp(-1. * self.steps_done / EPS_DECAY)
         self.steps_done += 1
         if sample > eps_threshold:
             with torch.no_grad():
-                return self.policy_net(state).max(1)[1].view(1, 1)
+                return self.policy_net(state, target_features).max(1)[1].view(1, 1)
         else:
             return torch.tensor([[random.randrange(self.n_action)]],
                                 device=self.device, dtype=torch.long)
@@ -89,19 +89,22 @@ class Agent(object):
             device=self.device, dtype=torch.uint8)
         non_final_next_states = torch.cat([s for s in batch.next_state
                                            if s is not None])
+        non_final_target_features = torch.cat([s for s in batch.target_feature
+                                               if s is not None])
         state_batch = torch.cat(batch.state)
+        target_features_batch = torch.cat(batch.target_feature)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken
         state_action_values =\
-            self.policy_net(state_batch).gather(1, action_batch)
+            self.policy_net(state_batch, target_features_batch).gather(1, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
         next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
         next_state_values[non_final_mask] =\
-            self.target_net(non_final_next_states).max(1)[0].detach()
+            self.target_net(non_final_next_states, non_final_target_features).max(1)[0].detach()
         # Compute the expected Q values
         expected_state_action_values =\
             (next_state_values * GAMMA) + reward_batch
