@@ -134,7 +134,9 @@ class OwnDataset(Dataset):
         self.eme_data = drop_raws(self.eme_data)
 
         self.user_features = calculate_user_features(self.eme_data)
+        self.user_features = self.user_features.fillna(self.user_features.median())
         self.target_features = calculate_target_features(self.eme_data)
+        self.target_features = self.target_features.fillna(self.target_features.median())
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values

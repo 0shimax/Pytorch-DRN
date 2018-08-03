@@ -35,8 +35,7 @@ root_dir = './raw'
 
 
 def main():
-    # n_action = 2
-    n_target = 50
+    n_target = 30
     env = Environment(file_name, root_dir, n_target=n_target, max_step=20)
     agent = Agent(env.dim_in_feature, n_target)  #, env.n_action)
 
@@ -48,14 +47,14 @@ def main():
             state, target_features, current_user_id, target_ids = env.obs()
             # Select and perform an action
             action = agent.select_action(state, target_features)
-            action = target_ids[0][action.item()]
-            reward, done = env.step(current_user_id, action.item(), t)
+            target_id = target_ids[:, action.item()].item()
+            reward, done = env.step(current_user_id, target_id, t)
             reward = torch.tensor([reward], device=agent.device)
 
             # Observe new state
             if not done:
                 # next_state = state.clone()
-                next_state = state
+                next_state, _, _, _ = env.obs()
             else:
                 next_state = None
 
