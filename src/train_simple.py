@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 from model.agent_simple import Agent
-from model.environment_simple import Environment
+from model.environment_for_owndata import Environment
 from feature.eme_data_loader import OwnDataset, loader
 
 
@@ -30,19 +30,20 @@ from feature.eme_data_loader import OwnDataset, loader
 #
 # args = parse_args()
 TARGET_UPDATE = 10
+file_name = 'eme_interactsions_June2018.csv'
+root_dir = './raw'
 
 
 def main():
     n_action = 2
     agent = Agent(n_action)
-    env = Environment(n_action)
+    env = Environment(file_name, root_dir)
 
     num_episodes = 5000
     for i_episode in range(num_episodes):
         t_reword = 0
         t_loss = 0
-        results = np.zeros((2, n_action))
-        state = torch.FloatTensor([env.obs()])
+        state = env.obs()
         for t in count():
             # Select and perform an action
             action = agent.select_action(state)
@@ -50,14 +51,10 @@ def main():
             reward, done = env.step(action.item(), t)
             reward = torch.tensor([reward], device=agent.device)
 
-            g_idx = 0 if env.viewer.gender=='male' else 1
-            results[g_idx, action.item()] += 1.  # reward[0].item()
-
             # Observe new state
             if not done:
                 # next_state = state.clone()
-                next_state = torch.FloatTensor([env.obs()])
-                # next_state[:,-1] += reward.data.item()
+                next_state = env.obs()
             else:
                 next_state = None
 
@@ -77,7 +74,6 @@ def main():
                 break
         if i_episode % TARGET_UPDATE == 0:
             print('Episode: {} Reward: {:.3f} Loss: {:.3f}'.format(i_episode, t_reword, t_loss))
-            print(results)
         # Update the target network
         if i_episode % TARGET_UPDATE == 0:
             agent.update_target_network()
