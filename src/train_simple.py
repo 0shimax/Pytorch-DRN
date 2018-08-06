@@ -35,45 +35,65 @@ root_dir = './raw'
 
 
 def main():
-    n_target = 30
-    env = Environment(file_name, root_dir, n_target=n_target, max_step=20)
-    agent = Agent(env.dim_in_feature, n_target)  #, env.n_action)
+    n_target = 100
+    max_step = 10
+    train_env = Environment(file_name, root_dir,
+                            n_target=n_target, max_step=max_step, train=True)
+    train_agent = Agent(train_env.dim_in_feature, n_target)  #, env.n_action)
+
+    test_env = Environment(file_name, root_dir,
+                           n_target=n_target, max_step=max_step, train=False)
+    test_agent = Agent(test_env.dim_in_feature, n_target)  #, env.n_action)
+    test_agent.steps_done = 1e10
 
     num_episodes = 5000
     for i_episode in range(num_episodes):
-        t_reword = 0
+        t_reward = 0
         t_loss = 0
+
+        test_t_reward = 0
         for t in count():
-            state, target_features, current_user_id, target_ids = env.obs()
+            state, target_features, current_user_id, target_ids = train_env.obs()
             # Select and perform an action
-            action = agent.select_action(state, target_features)
+            action = train_agent.select_action(state, target_features)
             target_id = target_ids[:, action.item()].item()
-            reward, done = env.step(current_user_id, target_id, t)
-            reward = torch.tensor([reward], device=agent.device)
+            reward, done = train_env.step(current_user_id, target_id, t)
+            reward = torch.tensor([reward], device=train_agent.device)
 
             # Observe new state
             if not done:
                 # next_state = state.clone()
-                next_state, _, _, _ = env.obs()
+                next_state, _, _, _ = train_env.obs()
             else:
                 next_state = None
 
             # Store the transition in memory
-            agent.memory.push(state, target_features, action, next_state, reward)
+            train_agent.memory.push(state, target_features, action, next_state, reward)
 
             # Perform one step of the optimization (on the target network)
-            loss = agent.optimize_model()
-            t_reword += reward.data.item()
+            loss = train_agent.optimize_model()
+            t_reward += reward.data.item()
             if loss:
                 t_loss += loss
                 # print reward and loss
             if done:
                 break
+
+        for t in count():
+            state, target_features, current_user_id, target_ids = test_env.obs()
+            # Select and perform an action
+            action = test_agent.select_action(state, target_features)
+            target_id = target_ids[:, action.item()].item()
+            reward, done = test_env.step(current_user_id, target_id, t)
+            test_t_reward += reward
+            if done:
+                break
+
         if i_episode % TARGET_UPDATE == 0:
-            print('Episode: {} Reward: {:.3f} Loss: {:.3f}'.format(i_episode, t_reword, t_loss))
-        # Update the target network
-        if i_episode % TARGET_UPDATE == 0:
-            agent.update_target_network()
+            print('Episode: {} Train Reward: {:.3f} Loss: {:.3f} Test Loss: {:.3f}'.format(
+                i_episode, t_reward, t_loss, test_t_reward))
+            # Update the target network
+            train_agent.update_target_network()
 
     print('Complete')
 

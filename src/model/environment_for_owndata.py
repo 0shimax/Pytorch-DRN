@@ -8,10 +8,11 @@ from feature.eme_data_loader import OwnDataset, loader
 
 class Environment(object):
     def __init__(self, file_name, root_dir,
-                 n_target=100, high_rate=.5, max_step=20):
+                 n_target=100, high_rate=.5, max_step=20,
+                 train=True):
         n_high = int(n_target*high_rate)
         n_low = n_target - n_high
-        self.dataset = OwnDataset(file_name, root_dir, n_high, n_low)
+        self.dataset = OwnDataset(file_name, root_dir, n_high, n_low, train)
         self.n_action = len(self.dataset.target_features)
         self.dim_in_feature = len(self.dataset.user_features.iloc[0]) - 1
         self.data_loader = loader(self.dataset, 1)

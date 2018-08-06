@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from sklearn.model_selection import train_test_split
 
 
 def one_hotte(df):
@@ -19,6 +20,12 @@ def one_hotte(df):
 def get_id_columns(df):
     user_and_target_id_columns = ["user_id", "target_user_id"]
     return df[user_and_target_id_columns]
+
+
+def extranct_interacted_user_rows(df):
+    tmp = df[["user_id", "label"]].groupby('user_id').sum()
+    interacted_user_id = tmp[tmp.label>0].reset_index()
+    return df[df.user_id.isin(interacted_user_id.user_id)]
 
 
 def get_ethnicity_columns(df):
@@ -40,7 +47,11 @@ def drop_raws(df):
 
     # exclude asian_user and asian_target because these are all 0
     # exclude income_user and income_target because these are almost all Null
-    drop_targets = ["income_user", "income_target", "label"]
+    drop_targets = ["income_user", "income_target", "label",
+                    "asian_target", "education_target",
+                    "marital_status_target", "body_type_target",
+                    "asian_user", "education_user",
+                    "marital_status_user", "body_type_user"]
     drop_targets += at_columns
     drop_targets += distance_columns
     drop_targets += is_columns
@@ -82,8 +93,8 @@ def calcurate_target_clicked(df):
     return result
 
 
-def get_target_ids_for_input(target_clicked_rate,
-                             valued_target_ids, n_high, n_low):
+def get_target_ids_for_train_input(target_clicked_rate,
+                                   valued_target_ids, n_high, n_low):
     n_total = n_high + n_low
     valued_target_flag = target_clicked_rate.target_user_id.isin(valued_target_ids)
     high_rate_flag = target_clicked_rate.label_rate > 0
@@ -103,15 +114,37 @@ def get_target_ids_for_input(target_clicked_rate,
     return ids
 
 
+def get_target_ids_for_test_input(target_clicked_rate, n_high, n_low):
+    n_total = n_high + n_low
+    high_rate_flag = target_clicked_rate.label_rate > 0
+
+    query = high_rate_flag
+    hight = target_clicked_rate[query].sample(n_high).target_user_id.values
+    low = target_clicked_rate[
+        target_clicked_rate.label_rate == 0].sample(n_low).target_user_id.values
+    ids = np.concatenate([hight, low])
+    return ids
+
+
+def get_target_ids_for_input(target_clicked_rate,
+                             valued_target_ids, n_high, n_low, train=True):
+    if train:
+        return get_target_ids_for_train_input(target_clicked_rate, valued_target_ids, n_high, n_low)
+    else:
+        return get_target_ids_for_test_input(target_clicked_rate, n_high, n_low)
+
+
 class OwnDataset(Dataset):
     def __init__(self, file_name, root_dir, n_high, n_low,
-                 subset=False, transform=None):
+                 subset=False, transform=None, train=True, split_seed=555):
         super().__init__()
         self.file_name = file_name
         self.root_dir = root_dir
         self.transform = transform
         self.n_high = n_high
         self.n_low = n_low
+        self._train = train
+        self.split_seed = split_seed
         self.prepare_data()
         self.user_features_orig = self.user_features
 
@@ -123,26 +156,44 @@ class OwnDataset(Dataset):
 
     def prepare_data(self):
         data_path = Path(self.root_dir, self.file_name)
-        self.eme_data = pd.read_csv(data_path)
+        eme_data = pd.read_csv(data_path)
+        extracted_interacted_rows = extranct_interacted_user_rows(eme_data)
 
-        self.target_clicked_rate = calcurate_target_clicked(self.eme_data)
+        df_train, df_test = train_test_split(extracted_interacted_rows,
+                                             random_state=self.split_seed,
+                                             shuffle=True,
+                                             test_size=0.2)
+        if self._train:
+            _data = df_train
+            self.target_clicked_rate = calcurate_target_clicked(_data)
+            self.user_and_target_ids = get_id_columns(_data)
+            self.rewards = _data.label.astype(int)
+            _data = get_ethnicity_columns(_data)
+            _data = drop_raws(_data)
 
-        self.user_and_target_ids = get_id_columns(self.eme_data)
-        self.rewards = self.eme_data.label.astype(int)
+            self.user_features = calculate_user_features(_data)
+            self.user_features = self.user_features.fillna(self.user_features.median())
+            self.target_features = calculate_target_features(_data)
+            self.target_features = self.target_features.fillna(self.target_features.median())
 
-        self.eme_data = get_ethnicity_columns(self.eme_data)
-        self.eme_data = drop_raws(self.eme_data)
+        else:
+            _data = df_test
+            self.target_clicked_rate = calcurate_target_clicked(eme_data)
+            self.user_and_target_ids = get_id_columns(eme_data)
+            self.rewards = eme_data.label.astype(int)
+            _data = get_ethnicity_columns(_data)
+            _data = drop_raws(_data)
+            self.user_features = calculate_user_features(_data)
+            self.user_features = self.user_features.fillna(self.user_features.median())
 
-        self.user_features = calculate_user_features(self.eme_data)
-        self.user_features = self.user_features.fillna(self.user_features.median())
-        self.target_features = calculate_target_features(self.eme_data)
-        self.target_features = self.target_features.fillna(self.target_features.median())
+            _eme_data = get_ethnicity_columns(eme_data)
+            _eme_data = drop_raws(eme_data)
+            self.target_features = calculate_target_features(_eme_data)
+            self.target_features = self.target_features.fillna(self.target_features.median())
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values
         current_user_id = ids[0]
-        current_user_id = 444532
-        # reward = self.rewards.iloc[idx]
 
         user_feature = self.user_features[self.user_features.user_id == current_user_id]
         user_feature =\
@@ -152,7 +203,8 @@ class OwnDataset(Dataset):
         valued_target_ids =\
             self.user_and_target_ids[self.user_and_target_ids.user_id == current_user_id].target_user_id.values
         target_ids = get_target_ids_for_input(
-            self.target_clicked_rate, valued_target_ids, self.n_high, self.n_low)
+            self.target_clicked_rate, valued_target_ids, self.n_high, self.n_low,
+            self._train)
         target_features = self.target_features[
             self.target_features.target_user_id.isin(target_ids)]
         target_features =\

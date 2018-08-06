@@ -7,23 +7,23 @@ class ValueNet(nn.Module):
     def __init__(self, dim_in, action_num):
         super().__init__()
         self.fcb1 = nn.Sequential(
-            nn.Linear(dim_in, 30),
+            nn.Linear(dim_in, 64),
             # SwitchNorm1d(192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(30, 30),
+            nn.Linear(64, 32),
             # SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(30, 30),
             # SwitchNorm1d(64),
             nn.ReLU())
-        self.fc1 = nn.Linear(30, action_num)
+        self.fc1 = nn.Linear(32, action_num)
 
     def forward(self, user_feature):
         h = self.fcb1(user_feature)
         h = self.fcb2(h)
-        h = self.fcb3(h)
+        # h = self.fcb3(h)
         out = self.fc1(h)
         return out
 
@@ -32,18 +32,18 @@ class AdvantageNet(nn.Module):
     def __init__(self, dim_in, action_num):
         super().__init__()
         self.fcb1 = nn.Sequential(
-            nn.Linear(dim_in*2, 30),
-            SwitchNorm1d(30),
+            nn.Linear(dim_in*2, 128),
+            # SwitchNorm1d(128),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(30, 30),
+            nn.Linear(128, 64),
             # SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
-            nn.Linear(30, 30),
+            nn.Linear(64, 32),
             # SwitchNorm1d(64),
             nn.ReLU())
-        self.fc1 = nn.Linear(30, 1)
+        self.fc1 = nn.Linear(32, 1)
 
     def forward(self, user_feature, target_features):
         n_bach, n_feature = user_feature.shape
