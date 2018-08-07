@@ -1,16 +1,31 @@
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import random
 import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 
 
+def add_label(df):
+    tmp = df[["yes_at", "smiled_at", "messaged_at"]]
+    labels = []
+    for y, s, m in tmp.values:
+        if y!=y or s!=s or m!=m:
+            labels.append(1)
+        else:
+            label = 1 if random.uniform(0, 1) > .5 else 0
+            labels.append(label)
+            # labels.append(0)
+    return df.assign(label=labels)
+
+
 def one_hotte(df):
     target_columns = [c for c in df.columns
-                      if "ethnicity_" in c or
-                         "has_children_" in c or
-                         "faith_" in c or
+                      if "has_children_" in c or
+                         c == "asian_user" or
+                         c == "asian_target" or
+                         "smoke_" in c or
                          "drink_" in c]
     df[target_columns] = df[target_columns].astype(str)
     df = pd.get_dummies(df, columns=target_columns, drop_first=True)
@@ -39,19 +54,21 @@ def get_ethnicity_columns(df):
 
 
 def drop_raws(df):
-    at_columns = [c for c in df.columns if "_at" in c]
+    at_columns = [c for c in df.columns if "_at" in c
+                  and c != "body_type_athletic_user"
+                  and c != "body_type_athletic_target"]
     distance_columns = [c for c in df.columns if "_distance" in c]
     is_columns = [c for c in df.columns if "is_" in c]
     has_columns = [c for c in df.columns
-                   if "has_" in c and "has_children_user" != c]
+                   if "has_" in c
+                   and "has_children_user" != c
+                   and "has_children_target" != c]
 
     # exclude asian_user and asian_target because these are all 0
     # exclude income_user and income_target because these are almost all Null
-    drop_targets = ["income_user", "income_target", "label",
-                    "asian_target", "education_target",
-                    "marital_status_target", "body_type_target",
-                    "asian_user", "education_user",
-                    "marital_status_user", "body_type_user"]
+    drop_targets = ["label", "age_arrived_user", "age_arrived_target",
+                    "country_target", "city_target", "state_target",
+                    "country_user", "city_user", "state_user"]
     drop_targets += at_columns
     drop_targets += distance_columns
     drop_targets += is_columns
@@ -78,7 +95,7 @@ def calculate_target_features(df):
         df.groupby(c_id)[target_feature_columns].head(1)
     target_features[c_id] =\
         df.loc[target_features.index].target_user_id
-    # target_features.drop(c_id, axis=1, inplace=True)
+
     return one_hotte(target_features)
 
 
@@ -138,6 +155,7 @@ class OwnDataset(Dataset):
     def __init__(self, file_name, root_dir, n_high, n_low,
                  subset=False, transform=None, train=True, split_seed=555):
         super().__init__()
+        print("Train:", train)
         self.file_name = file_name
         self.root_dir = root_dir
         self.transform = transform
@@ -157,58 +175,75 @@ class OwnDataset(Dataset):
     def prepare_data(self):
         data_path = Path(self.root_dir, self.file_name)
         eme_data = pd.read_csv(data_path)
-        extracted_interacted_rows = extranct_interacted_user_rows(eme_data)
+        eme_data = add_label(eme_data)
 
-        df_train, df_test = train_test_split(extracted_interacted_rows,
-                                             random_state=self.split_seed,
-                                             shuffle=True,
-                                             test_size=0.2)
+        extracted_interacted_rows = extranct_interacted_user_rows(eme_data)
+        unique_user_ids = extracted_interacted_rows.user_id.unique()
+
+        train_user_ids, test_user_ids = train_test_split(unique_user_ids,
+                                                         random_state=self.split_seed,
+                                                         shuffle=True,
+                                                         test_size=0.2)
         if self._train:
-            _data = df_train
+            _data = eme_data[eme_data.user_id.isin(train_user_ids)]
             self.target_clicked_rate = calcurate_target_clicked(_data)
             self.user_and_target_ids = get_id_columns(_data)
             self.rewards = _data.label.astype(int)
-            _data = get_ethnicity_columns(_data)
+            # _data = get_ethnicity_columns(_data)
             _data = drop_raws(_data)
 
             self.user_features = calculate_user_features(_data)
             self.user_features = self.user_features.fillna(self.user_features.median())
+
             self.target_features = calculate_target_features(_data)
             self.target_features = self.target_features.fillna(self.target_features.median())
-
         else:
-            _data = df_test
+            _data = eme_data[eme_data.user_id.isin(test_user_ids)]
             self.target_clicked_rate = calcurate_target_clicked(eme_data)
-            self.user_and_target_ids = get_id_columns(eme_data)
-            self.rewards = eme_data.label.astype(int)
-            _data = get_ethnicity_columns(_data)
+            self.user_and_target_ids = get_id_columns(_data)
+            self.rewards = _data.label.astype(int)
+            # _data = get_ethnicity_columns(_data)
             _data = drop_raws(_data)
             self.user_features = calculate_user_features(_data)
             self.user_features = self.user_features.fillna(self.user_features.median())
 
-            _eme_data = get_ethnicity_columns(eme_data)
+            # _eme_data = get_ethnicity_columns(eme_data)
             _eme_data = drop_raws(eme_data)
             self.target_features = calculate_target_features(_eme_data)
             self.target_features = self.target_features.fillna(self.target_features.median())
+
+        # print(self.user_features.columns.values.tolist())
+        # print(self.target_features.columns.values.tolist())
+        # target_c = [c.replace('target', '') for c in self.target_features.columns.values.tolist()]
+        # user_c = [c.replace('user', '') for c in self.user_features.columns.values.tolist()]
+        # print([c for c in user_c if not c in target_c])
+        # print([c for c in target_c if not c in user_c])
+        # assert False
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values
         current_user_id = ids[0]
 
         user_feature = self.user_features[self.user_features.user_id == current_user_id]
-        user_feature =\
-            user_feature.copy().drop("user_id", axis=1).astype(np.float32).values
+        user_feature = user_feature.copy().drop("user_id", axis=1)
+        user_feature = user_feature.astype(np.float32).values
         user_feature = user_feature.reshape(-1)
+        # print("user_feature", user_feature.shape)
 
         valued_target_ids =\
-            self.user_and_target_ids[self.user_and_target_ids.user_id == current_user_id].target_user_id.values
+            self.user_and_target_ids[
+                self.user_and_target_ids.user_id == current_user_id
+            ].target_user_id.values
         target_ids = get_target_ids_for_input(
-            self.target_clicked_rate, valued_target_ids, self.n_high, self.n_low,
-            self._train)
+            self.target_clicked_rate, valued_target_ids,
+            self.n_high, self.n_low, self._train)
         target_features = self.target_features[
             self.target_features.target_user_id.isin(target_ids)]
+
         target_features =\
-            target_features.copy().drop("target_user_id", axis=1).astype(np.float32).values
+            target_features.copy().drop("target_user_id", axis=1)
+        target_features = target_features.astype(np.float32).values
+        # print("target_features", target_features.shape)
 
         return (torch.FloatTensor(user_feature),
                 torch.FloatTensor(target_features),

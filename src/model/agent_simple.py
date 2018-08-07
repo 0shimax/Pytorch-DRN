@@ -9,7 +9,7 @@ from model.dqn import DQN
 from model.ddqn import Model
 
 
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -87,7 +87,6 @@ class Agent(object):
             tuple(map(lambda s: s is not None,
                       batch.next_state)),
             device=self.device, dtype=torch.uint8)
-        print(batch.next_state)
         non_final_next_states = torch.cat([s for s in batch.next_state
                                            if s is not None])
         non_final_target_features = torch.cat([t for s, t in zip(batch.next_state, batch.target_feature)

@@ -12,7 +12,8 @@ class Environment(object):
                  train=True):
         n_high = int(n_target*high_rate)
         n_low = n_target - n_high
-        self.dataset = OwnDataset(file_name, root_dir, n_high, n_low, train)
+        self.dataset = OwnDataset(file_name, root_dir, n_high, n_low,
+                                  train=train)
         self.n_action = len(self.dataset.target_features)
         self.dim_in_feature = len(self.dataset.user_features.iloc[0]) - 1
         self.data_loader = loader(self.dataset, 1)

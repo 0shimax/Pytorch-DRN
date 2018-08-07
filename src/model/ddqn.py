@@ -46,9 +46,13 @@ class AdvantageNet(nn.Module):
         self.fc1 = nn.Linear(32, 1)
 
     def forward(self, user_feature, target_features):
+        # print(user_feature.shape, target_features.shape)
         n_bach, n_feature = user_feature.shape
-        uf = user_feature.unsqueeze(dim=1).expand(target_features.shape)
-        x = torch.cat([uf, target_features], dim=2).view(-1, n_feature*2)
+        expanded_shape = list(target_features.shape[:2])+[user_feature.shape[-1]]
+        uf = user_feature.unsqueeze(dim=1).expand(expanded_shape)
+        n_features = target_features.shape[-1] + user_feature.shape[-1]
+        # print(uf.shape, target_features.shape, n_features)
+        x = torch.cat([uf, target_features], dim=2).view(-1, n_features)
         h = self.fcb1(x)
         h = self.fcb2(h)
         h = self.fcb3(h)
