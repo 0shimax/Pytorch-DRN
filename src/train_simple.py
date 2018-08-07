@@ -86,7 +86,7 @@ def main():
             if done:
                 break
 
-        print("1 train loop done")
+        # print("1 train loop done")
         for t in count():
             state, target_features, current_user_id, target_ids = test_env.obs()
             # Select and perform an action
@@ -96,7 +96,7 @@ def main():
             test_t_reward += reward
             if done:
                 break
-        print("test loop done")
+        # print("test loop done")
 
         if i_episode % TARGET_UPDATE == 0:
             print('Episode: {} Train Reward: {:.3f} Loss: {:.3f} Test Reward: {:.3f}'.format(
