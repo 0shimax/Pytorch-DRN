@@ -35,7 +35,7 @@ root_dir = './raw'
 
 
 def main():
-    n_target = 100
+    n_target = 1000
     max_step = 20
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
@@ -44,7 +44,7 @@ def main():
 
     test_env = Environment(file_name, root_dir,
                            n_target=n_target, max_step=max_step,
-                           high_rate=.5, train=False)
+                           high_rate=.8, train=False)
     test_agent = Agent(test_env.dim_in_feature, n_target)
     test_agent.steps_done = 1e10
 
@@ -69,7 +69,6 @@ def main():
 
             # Observe new state
             if not done:
-                # next_state = state.clone()
                 next_state, _, _, _ = train_env.obs()
             else:
                 next_state = None
@@ -87,6 +86,7 @@ def main():
                 break
 
         # print("1 train loop done")
+        test_agent.policy_net = train_agent.policy_net.detach()
         for t in count():
             state, target_features, current_user_id, target_ids = test_env.obs()
             # Select and perform an action

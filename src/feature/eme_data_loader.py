@@ -150,6 +150,9 @@ class OwnDataset(Dataset):
 
             self.target_features = calculate_target_features(eme_data)
 
+        print("user", self.user_features.shape)
+        print("target", self.target_features.shape)
+
         # print(self.user_features.columns.values.tolist())
         # print(self.target_features.columns.values.tolist())
         # target_c = [c.replace('target', '') for c in self.target_features.columns.values.tolist()]
