@@ -1,15 +1,10 @@
-import math
-import numpy as np
+import copy
 import argparse
-from collections import defaultdict
 from itertools import count
-
 import torch
-import torch.nn as nn
 
 from model.agent_simple import Agent
 from model.environment_for_owndata import Environment
-from feature.eme_data_loader import OwnDataset, loader
 
 
 # def parse_args():
@@ -35,7 +30,7 @@ root_dir = './raw'
 
 
 def main():
-    n_target = 1000
+    n_target = 500
     max_step = 20
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
@@ -86,7 +81,7 @@ def main():
                 break
 
         # print("1 train loop done")
-        test_agent.policy_net = train_agent.policy_net.detach()
+        test_agent.policy_net.load_state_dict(train_agent.policy_net.state_dict())
         for t in count():
             state, target_features, current_user_id, target_ids = test_env.obs()
             # Select and perform an action
