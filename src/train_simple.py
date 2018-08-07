@@ -30,7 +30,7 @@ from feature.eme_data_loader import OwnDataset, loader
 #
 # args = parse_args()
 TARGET_UPDATE = 10
-file_name = 'eme_interactions_June-July2018_NY.csv'  # 'eme_interactsions_June2018.csv'
+file_name = 'eme_interactsions_June-July2018_NY_features.csv'
 root_dir = './raw'
 
 
@@ -40,13 +40,18 @@ def main():
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
                             high_rate=.5, train=True)
-    train_agent = Agent(train_env.dim_in_feature, n_target)  #, env.n_action)
+    train_agent = Agent(train_env.dim_in_feature, n_target)
 
     test_env = Environment(file_name, root_dir,
                            n_target=n_target, max_step=max_step,
                            high_rate=.5, train=False)
-    test_agent = Agent(test_env.dim_in_feature, n_target)  #, env.n_action)
+    test_agent = Agent(test_env.dim_in_feature, n_target)
     test_agent.steps_done = 1e10
+
+    assert train_env.dataset.user_features.shape[1:]==test_env.dataset.user_features.shape[1:],\
+        "number of train features and test feature must be same"
+    assert train_env.dataset.target_features.shape[1:]==test_env.dataset.target_features.shape[1:],\
+        "number of train features and test feature must be same"
 
     num_episodes = 5000
     for i_episode in range(num_episodes):
@@ -81,6 +86,7 @@ def main():
             if done:
                 break
 
+        print("1 train loop done")
         for t in count():
             state, target_features, current_user_id, target_ids = test_env.obs()
             # Select and perform an action
@@ -90,6 +96,7 @@ def main():
             test_t_reward += reward
             if done:
                 break
+        print("test loop done")
 
         if i_episode % TARGET_UPDATE == 0:
             print('Episode: {} Train Reward: {:.3f} Loss: {:.3f} Test Reward: {:.3f}'.format(
