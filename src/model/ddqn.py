@@ -7,23 +7,23 @@ class ValueNet(nn.Module):
     def __init__(self, dim_in, action_num):
         super().__init__()
         self.fcb1 = nn.Sequential(
-            nn.Linear(dim_in, 64),
+            nn.Linear(dim_in, 256*2),
             # SwitchNorm1d(192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(64, 32),
+            nn.Linear(256*2, 256*4),
             # SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
-            nn.Linear(30, 30),
+            nn.Linear(256*4, 256*6),
             # SwitchNorm1d(64),
             nn.ReLU())
-        self.fc1 = nn.Linear(32, action_num)
+        self.fc1 = nn.Linear(256*6, action_num)
 
     def forward(self, user_feature):
         h = self.fcb1(user_feature)
         h = self.fcb2(h)
-        # h = self.fcb3(h)
+        h = self.fcb3(h)
         out = self.fc1(h)
         return out
 

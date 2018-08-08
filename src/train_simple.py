@@ -30,7 +30,7 @@ root_dir = './raw'
 
 
 def main():
-    n_target = 500
+    n_target = 1500
     max_step = 20
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
@@ -39,7 +39,7 @@ def main():
 
     test_env = Environment(file_name, root_dir,
                            n_target=n_target, max_step=max_step,
-                           high_rate=.8, train=False)
+                           high_rate=.9, train=False)
     test_agent = Agent(test_env.dim_in_feature, n_target)
     test_agent.steps_done = 1e10
 
