@@ -30,8 +30,8 @@ root_dir = './raw'
 
 
 def main():
-    n_target = 1500
-    max_step = 20
+    n_target = 3000
+    max_step = 100
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
                             high_rate=.5, train=True)
@@ -41,11 +41,10 @@ def main():
                            n_target=n_target, max_step=max_step,
                            high_rate=.9, train=False)
     test_agent = Agent(test_env.dim_in_feature, n_target)
-    test_agent.steps_done = 1e10
 
     assert train_env.dataset.user_features.shape[1:]==test_env.dataset.user_features.shape[1:],\
         "number of train features and test feature must be same"
-    assert train_env.dataset.target_features.shape[1:]==test_env.dataset.target_features.shape[1:],\
+    assert train_env.dataset.target_features_all.shape[1:]==test_env.dataset.target_features_all.shape[1:],\
         "number of train features and test feature must be same"
 
     num_episodes = 5000
@@ -53,12 +52,19 @@ def main():
         t_reward = 0
         t_loss = 0
 
+        # check when reset eager parameter
+        # https://github.com/chinancheng/DDQN-pytorch/blob/44f6e12e28cee8185fe94dd98f6fba5994a8ad36/main.py
+        # train_agent.steps_done = 4000 if train_agent.steps_done > 4000 else train_agent.steps_done
         test_t_reward = 0
         for t in count():
             state, target_features, current_user_id, target_ids = train_env.obs()
+            # print(state.shape, target_features.shape)
+            # print(current_user_id.item(), target_ids.numpy())
+            assert len(target_features[0]) == n_target, "#target_ids must much n_target"
+
             # Select and perform an action
             action = train_agent.select_action(state, target_features)
-            target_id = target_ids[:, action.item()].item()
+            target_id = target_ids[:, action.item()]
             reward, done = train_env.step(current_user_id, target_id, t)
             reward = torch.tensor([reward], device=train_agent.device)
 
@@ -70,6 +76,10 @@ def main():
 
             # Store the transition in memory
             train_agent.memory.push(state, target_features, action, next_state, reward)
+            # if reward > 0:
+            #     train_agent.with_reward_memory.push(state, target_features, action, next_state, reward)
+            # else:
+            #     train_agent.without_reward_memory.push(state, target_features, action, next_state, reward)
 
             # Perform one step of the optimization (on the target network)
             loss = train_agent.optimize_model()
@@ -80,14 +90,17 @@ def main():
             if done:
                 break
 
+            train_agent.epsilon = (train_agent.epsilon - 1e-6) if train_agent.epsilon > 0.1 else 0.1
+
         # print("1 train loop done")
         test_agent.policy_net.load_state_dict(train_agent.policy_net.state_dict())
         for t in count():
             state, target_features, current_user_id, target_ids = test_env.obs()
             # Select and perform an action
-            action = test_agent.select_action(state, target_features)
-            target_id = target_ids[:, action.item()].item()
-            reward, done = test_env.step(current_user_id, target_id, t)
+            action5, action5_idxs =\
+                test_agent.select_action_for_test(state, target_features, n_best=5)
+            target_id5 = target_ids[0, action5_idxs].view(-1)
+            reward, done = test_env.step(current_user_id, target_id5, t)
             test_t_reward += reward
             if done:
                 break

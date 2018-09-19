@@ -21,7 +21,7 @@ def one_hotte(df):
                          "smoke_" in c or
                          "drink_" in c]
     df[target_columns] = df[target_columns].astype(str)
-    df = pd.get_dummies(df, columns=target_columns, drop_first=True)
+    df = pd.get_dummies(df, columns=target_columns)
     return df
 
 

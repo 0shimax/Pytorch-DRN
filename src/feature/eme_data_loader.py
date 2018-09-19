@@ -41,10 +41,7 @@ def calculate_target_features(df):
     c_id = 'target_user_id'
     target_feature_columns =\
         [c for c in df.columns.values if '_target' in c]
-    target_features =\
-        df.groupby(c_id)[target_feature_columns].head(1)
-    target_features[c_id] =\
-        df.loc[target_features.index].target_user_id
+    target_features = df[[c_id] + target_feature_columns]
 
     return target_features
 
@@ -60,45 +57,51 @@ def calcurate_target_clicked(df):
     return result
 
 
-def get_target_ids_for_train_input(target_clicked_rate,
-                                   valued_target_ids, n_high, n_low):
+def get_target_ids_for_train_input(squewed_user_target_labels,
+                                   valued_target_idxs, n_high, n_low):
     n_total = n_high + n_low
-    valued_target_flag = target_clicked_rate.target_user_id.isin(valued_target_ids)
-    high_rate_flag = target_clicked_rate.label_rate > 0
-    query = (valued_target_flag) & (high_rate_flag)
-    valued_target_ids = target_clicked_rate[query].target_user_id.values
-    if len(valued_target_ids) >= n_total:
-        return valued_target_ids[:n_total]
+    high_rate_flag = squewed_user_target_labels.label > 0
+    if len(valued_target_idxs) >= n_total:
+        idxs = np.random.permutation(len(valued_target_idxs))[:n_total]
+        return valued_target_idxs[idxs]
 
-    n_rest = n_total - len(valued_target_ids)
+    query = ~squewed_user_target_labels.index.isin(valued_target_idxs)
+    query &= high_rate_flag
+    n_rest = n_total - len(valued_target_idxs)
+    if n_rest == 1:
+        hight = squewed_user_target_labels[query].sample(n_rest).index.values
+        return np.concatenate([valued_target_idxs, hight])
+
     m_n_high = int(n_rest * n_high / n_total)
     m_n_low = n_rest - m_n_high
-    query = high_rate_flag & ~query
-    hight = target_clicked_rate[query].sample(m_n_high).target_user_id.values
-    low = target_clicked_rate[
-        target_clicked_rate.label_rate == 0].sample(m_n_low).target_user_id.values
-    ids = np.concatenate([valued_target_ids, hight, low])
-    return ids
+    hight = squewed_user_target_labels[query].sample(m_n_high, replace=True).index.values
+    low = squewed_user_target_labels[
+        squewed_user_target_labels.label == 0].sample(m_n_low, replace=True).index.values
+    idxs = np.concatenate([valued_target_idxs, hight, low])
+    return idxs
 
 
-def get_target_ids_for_test_input(target_clicked_rate, n_high, n_low):
+def get_target_ids_for_test_input(squewed_user_target_labels, n_high, n_low):
     n_total = n_high + n_low
-    high_rate_flag = target_clicked_rate.label_rate > 0
+    high_rate_flag = squewed_user_target_labels.label > 0
 
-    query = high_rate_flag
-    hight = target_clicked_rate[query].sample(n_high).target_user_id.values
-    low = target_clicked_rate[
-        target_clicked_rate.label_rate == 0].sample(n_low).target_user_id.values
-    ids = np.concatenate([hight, low])
-    return ids
-
-
-def get_target_ids_for_input(target_clicked_rate,
-                             valued_target_ids, n_high, n_low, train=True):
-    if train:
-        return get_target_ids_for_train_input(target_clicked_rate, valued_target_ids, n_high, n_low)
+    if sum(high_rate_flag) < n_high:
+        hight = squewed_user_target_labels[high_rate_flag].index.values
+        n_low = n_total - sum(high_rate_flag)
     else:
-        return get_target_ids_for_test_input(target_clicked_rate, n_high, n_low)
+        hight = squewed_user_target_labels[high_rate_flag].sample(n_high).index.values
+    low = squewed_user_target_labels[
+        squewed_user_target_labels.label == 0].sample(n_low, replace=True).index.values
+    idxs = np.concatenate([hight, low])
+    return idxs
+
+
+def get_target_ids_for_input(squewed_user_target_labels,
+                             valued_target_idxs, n_high, n_low, train=True):
+    if train:
+        return get_target_ids_for_train_input(squewed_user_target_labels, valued_target_idxs, n_high, n_low)
+    else:
+        return get_target_ids_for_test_input(squewed_user_target_labels, n_high, n_low)
 
 
 class OwnDataset(Dataset):
@@ -135,31 +138,22 @@ class OwnDataset(Dataset):
                                                          test_size=0.2)
         if self._train:
             _data = eme_data[eme_data.user_id.isin(train_user_ids)]
-            self.target_clicked_rate = calcurate_target_clicked(_data)
-            self.user_and_target_ids = get_id_columns(_data)
-            self.rewards = _data.label.astype(int)
-
             self.user_features = calculate_user_features(_data)
-            self.target_features = calculate_target_features(_data)
+            self.user_and_target_ids = get_id_columns(_data)
+
+            self.rewards = _data[["user_id", "target_user_id", "label"]]
+            self.target_features_all = calculate_target_features(_data)
         else:
             _data = eme_data[eme_data.user_id.isin(test_user_ids)]
-            self.target_clicked_rate = calcurate_target_clicked(eme_data)
             self.user_and_target_ids = get_id_columns(_data)
-            self.rewards = _data.label.astype(int)
             self.user_features = calculate_user_features(_data)
 
-            self.target_features = calculate_target_features(eme_data)
+            self.rewards = eme_data[["user_id", "target_user_id", "label"]]
+            self.target_features_all = calculate_target_features(eme_data)
 
         print("user", self.user_features.shape)
-        print("target", self.target_features.shape)
+        print("target", len(self.target_features_all.target_user_id.unique()))
 
-        # print(self.user_features.columns.values.tolist())
-        # print(self.target_features.columns.values.tolist())
-        # target_c = [c.replace('target', '') for c in self.target_features.columns.values.tolist()]
-        # user_c = [c.replace('user', '') for c in self.user_features.columns.values.tolist()]
-        # print([c for c in user_c if not c in target_c])
-        # print([c for c in target_c if not c in user_c])
-        # assert False
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values
@@ -169,46 +163,44 @@ class OwnDataset(Dataset):
         user_feature = user_feature.copy().drop("user_id", axis=1)
         user_feature = user_feature.astype(np.float32).values
         user_feature = user_feature.reshape(-1)
-        # print("user_feature", user_feature.shape)
 
-        valued_target_ids =\
-            self.user_and_target_ids[
-                self.user_and_target_ids.user_id == current_user_id
-            ].target_user_id.values
-        target_ids = get_target_ids_for_input(
-            self.target_clicked_rate, valued_target_ids,
+        query = (self.rewards.user_id == current_user_id)
+        query &= (self.rewards.label == 1)
+        valued_target_idxs = self.rewards[query].index.values
+
+        squewed_user_target_labels =\
+            self.rewards.groupby("target_user_id").head(1)
+        target_idxs = get_target_ids_for_input(
+            squewed_user_target_labels, valued_target_idxs,
             self.n_high, self.n_low, self._train)
-        target_features = self.target_features[
-            self.target_features.target_user_id.isin(target_ids)]
+        target_features = self.target_features_all.loc[target_idxs].copy().reindex()
+        target_ids = target_features.target_user_id.values
 
         target_features =\
             target_features.copy().drop("target_user_id", axis=1)
         target_features = target_features.astype(np.float32).values
-        # print("target_features", target_features.shape)
 
         return (torch.FloatTensor(user_feature),
                 torch.FloatTensor(target_features),
                 current_user_id,
                 target_ids)
 
-    def get_reward(self, current_user_id, target_id):
-        # target_id = self.target_features.target_user_id.iloc[target_action_id]
-
-        # print("ids:", int(current_user_id), target_id)
-        query_user = self.user_and_target_ids.user_id == current_user_id
-        query_target = self.user_and_target_ids.target_user_id == target_id
+    def get_reward(self, current_user_id, target_ids):
+        query_user = self.rewards.user_id == current_user_id
+        query_target = self.rewards.target_user_id.isin(target_ids)
         query = (query_user) & (query_target)
 
-        idx = self.user_and_target_ids[query].index
-        if len(idx) == 0:
+        reward = self.rewards[query].label.values
+        if len(reward) == 0:
             return 0.
         else:
-            return float(self.rewards.loc[idx].values[0])
+            return float(reward.max())
+
 
 def loader(dataset, batch_size, shuffle=True):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=4)
+        num_workers=0)
     return loader

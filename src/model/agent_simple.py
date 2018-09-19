@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from model.reply_memory_simple import ReplayMemory, Transition
 from model.dqn import DQN
 from model.ddqn import Model
-
+# from model.ddqn_for_all import Model
 
 BATCH_SIZE = 128
 GAMMA = 0.999
@@ -36,12 +36,17 @@ class Agent(object):
             prepare_networks(dim_in_feature, n_action, self.device)
         # self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
-        self.memory = ReplayMemory(10000)
-        self.n_action = n_action
+        self.memory = ReplayMemory(10000)  # 10000
+        # self.with_reward_memory = ReplayMemory(10000)
+        # self.without_reward_memory = ReplayMemory(10000)
+
+        self.n_action = 250  # n_action
         self.steps_done = 0
         self.explore_coef = .1
         self.eta = .05
         self.uniform_range = uniform_range
+        self.eager_cnt = 0
+        self.epsilon = .5
 
     def select_action_explore_net(self, state, target_features):
         sample = random.random()
@@ -51,7 +56,8 @@ class Agent(object):
         # self.uniform_range *=  eps_threshold
         self.steps_done += 1
 
-        if sample > eps_threshold:
+        # if sample > eps_threshold:
+        if sample > self.epsilon:
             # print("genereate from policy net")
             with torch.no_grad():
                 return self.policy_net(state).max(1)[1].view(1, 1)
@@ -71,13 +77,26 @@ class Agent(object):
             with torch.no_grad():
                 return self.policy_net(state, target_features).max(1)[1].view(1, 1)
         else:
+            self.eager_cnt += 1
             return torch.tensor([[random.randrange(self.n_action)]],
                                 device=self.device, dtype=torch.long)
+
+    def select_action_for_test(self, state, target_features, n_best=5):
+        with torch.no_grad():
+            return torch.topk(self.policy_net(state, target_features), n_best)
+
 
     def optimize_model(self):
         if len(self.memory) < BATCH_SIZE:
             return
+
         transitions = self.memory.sample(BATCH_SIZE)
+
+        # if len(self.with_reward_memory) < BATCH_SIZE//2 or len(self.without_reward_memory) < BATCH_SIZE//2:
+        #     return
+        # with_reward_transitions = self.with_reward_memory.sample(BATCH_SIZE//2)
+        # without_reward_transitions = self.without_reward_memory.sample(BATCH_SIZE//2)
+        # transitions = with_reward_transitions + without_reward_transitions
         # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
         # detailed explanation).
         batch = Transition(*zip(*transitions))
@@ -112,8 +131,14 @@ class Agent(object):
         # print(state_action_values)
         # print(expected_state_action_values.unsqueeze(1))
         # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values,
-                                expected_state_action_values.unsqueeze(1))
+        # loss = F.smooth_l1_loss(state_action_values,
+        #                         expected_state_action_values.unsqueeze(1),
+        #                         True)
+
+        # MSELoss
+        loss = F.mse_loss(state_action_values,
+                          expected_state_action_values.unsqueeze(1),
+                          True)
 
         # Optimize the model
         self.optimizer.zero_grad()

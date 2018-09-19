@@ -3,33 +3,31 @@ import torch.nn as nn
 from model.swichable_normalization import SwitchNorm1d
 
 
+def inner(aa, bb):
+    return (aa * bb.unsqueeze(dim=1).expand(aa.shape)).sum(dim=2)
+
+
 class ValueNet(nn.Module):
     def __init__(self, dim_in, action_num):
         super().__init__()
-        h_dim = action_num
         self.fcb1 = nn.Sequential(
-            nn.Linear(dim_in, h_dim),
-            # SwitchNorm1d(h_dim),
-            nn.ReLU())
-        self.fcb1_1 = nn.Sequential(
-            nn.Linear(256, 256*2),
+            nn.Linear(dim_in, 64),
             # SwitchNorm1d(192),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(h_dim, h_dim),
-            # SwitchNorm1d(h_dim),
+            nn.Linear(64, 128),
+            # SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
-            nn.Linear(h_dim, h_dim),
-            # SwitchNorm1d(h_dim),
+            nn.Linear(256*4, 256*6),
+            # SwitchNorm1d(64),
             nn.ReLU())
-        self.fc1 = nn.Linear(h_dim, action_num)
+        self.fc1 = nn.Linear(128, 128)
 
     def forward(self, user_feature):
         h = self.fcb1(user_feature)
-        # h = self.fcb1_1(h)
         h = self.fcb2(h)
-        h = self.fcb3(h)
+        # h = self.fcb3(h)
         out = self.fc1(h)
         return out
 
@@ -37,21 +35,23 @@ class ValueNet(nn.Module):
 class AdvantageNet(nn.Module):
     def __init__(self, dim_in, action_num):
         super().__init__()
+        self.n_out_vec = 128
         self.fcb1 = nn.Sequential(
             nn.Linear(dim_in*2, 128),
             # SwitchNorm1d(128),
             nn.ReLU())
         self.fcb2 = nn.Sequential(
-            nn.Linear(128, 64),
+            nn.Linear(128, 128),
             # SwitchNorm1d(64),
             nn.ReLU())
         self.fcb3 = nn.Sequential(
             nn.Linear(64, 32),
-            # SwitchNorm1d(32),
+            # SwitchNorm1d(64),
             nn.ReLU())
-        self.fc1 = nn.Linear(32, 1)
+        self.fc1 = nn.Linear(128, self.n_out_vec)
 
     def forward(self, user_feature, target_features):
+        # print(user_feature.shape, target_features.shape)
         n_bach, n_feature = user_feature.shape
         expanded_shape = list(target_features.shape[:2])+[user_feature.shape[-1]]
         uf = user_feature.unsqueeze(dim=1).expand(expanded_shape)
@@ -60,9 +60,9 @@ class AdvantageNet(nn.Module):
         x = torch.cat([uf, target_features], dim=2).view(-1, n_features)
         h = self.fcb1(x)
         h = self.fcb2(h)
-        h = self.fcb3(h)
+        # h = self.fcb3(h)
         out = self.fc1(h)
-        return out.view(n_bach, -1)
+        return out.view(n_bach, -1, self.n_out_vec)
 
 
 class Model(nn.Module):
@@ -75,12 +75,13 @@ class Model(nn.Module):
         self.value_net = ValueNet(dim_in, action_num)
         self.advantage_net = AdvantageNet(dim_in, action_num)
 
-    def forward(self, user_feature, target_features):
-        # print(user_feature.shape, target_features.shape)
-
+    def forward(self, observation, target_features):
+        # user_feature, content_id = observation
+        user_feature = observation
         v = self.value_net(user_feature)
         a = self.advantage_net(user_feature, target_features)
-        q = v + (a - a.mean(dim=0))
+        q = inner(a, v)
+        # print("q:", q.shape)
         return q.view(q.size(0), -1)
 
     def save(self, path, step, optimizer):
