@@ -59,6 +59,9 @@ def calcurate_target_clicked(df):
 
 def get_target_ids_for_train_input(squewed_user_target_labels,
                                    valued_target_idxs, n_high, n_low):
+    # 全て返す
+    return squewed_user_target_labels.index.values
+
     n_total = n_high + n_low
     high_rate_flag = squewed_user_target_labels.label > 0
     if len(valued_target_idxs) >= n_total:
@@ -82,6 +85,9 @@ def get_target_ids_for_train_input(squewed_user_target_labels,
 
 
 def get_target_ids_for_test_input(squewed_user_target_labels, n_high, n_low):
+    # 全て返す
+    return squewed_user_target_labels.index.values
+
     n_total = n_high + n_low
     high_rate_flag = squewed_user_target_labels.label > 0
 
@@ -141,8 +147,8 @@ class OwnDataset(Dataset):
             self.user_features = calculate_user_features(_data)
             self.user_and_target_ids = get_id_columns(_data)
 
-            self.rewards = _data[["user_id", "target_user_id", "label"]]
-            self.target_features_all = calculate_target_features(_data)
+            self.rewards = eme_data[["user_id", "target_user_id", "label"]]
+            self.target_features_all = calculate_target_features(eme_data)  # _data
         else:
             _data = eme_data[eme_data.user_id.isin(test_user_ids)]
             self.user_and_target_ids = get_id_columns(_data)
@@ -153,7 +159,6 @@ class OwnDataset(Dataset):
 
         print("user", self.user_features.shape)
         print("target", len(self.target_features_all.target_user_id.unique()))
-
 
     def __getitem__(self, idx):
         ids = self.user_and_target_ids.iloc[idx].values
@@ -168,6 +173,7 @@ class OwnDataset(Dataset):
         query &= (self.rewards.label == 1)
         valued_target_idxs = self.rewards[query].index.values
 
+        # TODO: 後で名前変えたる
         squewed_user_target_labels =\
             self.rewards.groupby("target_user_id").head(1)
         target_idxs = get_target_ids_for_input(
@@ -180,10 +186,18 @@ class OwnDataset(Dataset):
             target_features.copy().drop("target_user_id", axis=1)
         target_features = target_features.astype(np.float32).values
 
+        eliminate_teacher = self.target_features_all.loc[valued_target_idxs].copy().reindex()
+        eliminate_teacher_ids = eliminate_teacher.target_user_id.values
+        eliminate_teacher_val = target_ids == eliminate_teacher_ids[0]
+        for v in eliminate_teacher_ids[1:]:
+            eliminate_teacher_val += target_ids == v
+        eliminate_teacher_val = eliminate_teacher_val.astype(np.float32)
+
         return (torch.FloatTensor(user_feature),
                 torch.FloatTensor(target_features),
                 current_user_id,
-                target_ids)
+                target_ids,
+                eliminate_teacher_val)
 
     def get_reward(self, current_user_id, target_ids):
         query_user = self.rewards.user_id == current_user_id

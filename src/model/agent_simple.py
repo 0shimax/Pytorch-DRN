@@ -5,8 +5,8 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from model.reply_memory_simple import ReplayMemory, Transition
-from model.dqn import DQN
 from model.ddqn import Model
+from model.ae_net import AEN
 # from model.ddqn_for_all import Model
 
 BATCH_SIZE = 128
@@ -28,25 +28,29 @@ def prepare_networks(dim_in_feature, n_action, device):
 
 
 class Agent(object):
-    def __init__(self, dim_in_feature, n_action=10, uniform_range=10):
+    def __init__(self, dim_in_feature, device, n_action=10, uniform_range=10):
         # if gpu is to be used
-        self.device =\
-            torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         self.policy_net, self.target_net, self.explore_net =\
             prepare_networks(dim_in_feature, n_action, self.device)
+        self.aenet = AEN(dim_in_feature, n_action).to(self.device)
+        self.target_aenet = AEN(dim_in_feature, n_action).to(self.device)
+
         # self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=1e-4)
+        self.aen_optimizer = optim.Adam(self.aenet .parameters(), lr=1e-4)
         self.memory = ReplayMemory(10000)  # 10000
         # self.with_reward_memory = ReplayMemory(10000)
         # self.without_reward_memory = ReplayMemory(10000)
 
-        self.n_action = 250  # n_action
+        self.n_action = n_action
         self.steps_done = 0
         self.explore_coef = .1
         self.eta = .05
         self.uniform_range = uniform_range
         self.eager_cnt = 0
         self.epsilon = .5
+        self._lambda = .1
 
     def select_action_explore_net(self, state, target_features):
         sample = random.random()
@@ -78,13 +82,45 @@ class Agent(object):
                 return self.policy_net(state, target_features).max(1)[1].view(1, 1)
         else:
             self.eager_cnt += 1
-            return torch.tensor([[random.randrange(self.n_action)]],
+            valid_idx = self.eliminate_acts(state)
+            idx = torch.randperm(valid_idx.size(0))[0]
+            return torch.tensor([[valid_idx[idx]]],
                                 device=self.device, dtype=torch.long)
+            # return torch.tensor([[random.randrange(self.n_action)]],
+            #                     device=self.device, dtype=torch.long)
 
     def select_action_for_test(self, state, target_features, n_best=5):
         with torch.no_grad():
             return torch.topk(self.policy_net(state, target_features), n_best)
 
+
+    def eliminate_acts(self, state, beta=.5, elm_thresh=.6):
+        # LastLayerActivates(E(s))
+        es = self.target_aenet(state).detach()
+        phi, phi_t, v_ta_inv = self.calculate_v_ta()
+
+        # theta = v_ta_inv.mm(phi_t).mm(es)
+        # sqr_beta = 2*torch.log1p(v_ta.det()**(0.5))*((1e-6 + lambda_eye.det())**(-0.5))/delta*k
+        # sqr_beta = R * sqr_beta**(0.5) + _lambda**(0.5) * self.n_action
+
+        prob_upper_bound = beta * phi.mm(v_ta_inv).mm(phi_t)
+        elm_criteria = es - prob_upper_bound**(0.5)
+        valid_idx = torch.nonzero(elm_criteria.view(-1) < elm_thresh)
+
+        return valid_idx
+
+    def calculate_v_ta(self):
+        # Φ(s)
+        phi = self.target_aenet.phi.detach()
+        # deep copy
+        phi_t = torch.FloatTensor((phi.detach().numpy())).t_()
+
+        eye = torch.eye(phi.shape[-1])
+        lambda_eye = self._lambda * eye
+
+        v_ta = lambda_eye + phi_t.mm(phi)
+        v_ta_inv = v_ta.inverse()
+        return phi, phi_t, v_ta_inv
 
     def optimize_model(self):
         if len(self.memory) < BATCH_SIZE:
@@ -175,3 +211,24 @@ class Agent(object):
         for k, nv in zip(policy_state_dict.keys(), policy_params_values):
             policy_state_dict[k] = nv
         self.target_net.load_state_dict(policy_state_dict)
+
+    def optimize_aen(self, eliminate_teacher_val, state):
+        loss = F.mse_loss(eliminate_teacher_val,
+                          self.aenet(state),
+                          True)
+        # Optimize the model
+        self.aen_optimizer.zero_grad()
+        loss.backward(retain_graph=True)
+        for param in self.aenet.parameters():
+            param.data.clamp_(-1, 1)
+        self.aen_optimizer.step()
+        return loss.data.item()
+
+    def aen_update(self):
+        self.target_aenet.load_state_dict(self.aenet.state_dict())
+
+    # def aen_update(self, state):
+    #     v_ta_inv = self.calculate_v_ta()
+    #     b_a = self.aenet.phi.detach().t_().mm(self.aenet(state).detach())
+    #     self.v_a_inv = v_ta_inv
+    #     self.e_updated = v_ta_inv.mm(b_a)

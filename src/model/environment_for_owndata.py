@@ -14,7 +14,8 @@ class Environment(object):
         n_low = n_target - n_high
         self.dataset = OwnDataset(file_name, root_dir, n_high, n_low,
                                   train=train)
-        self.n_action = len(self.dataset.target_features_all.target_user_id.unique())
+        self.n_action =\
+            int(len(self.dataset.target_features_all.target_user_id.unique()))
         self.dim_in_feature = len(self.dataset.user_features.iloc[0]) - 1
         self.data_loader = loader(self.dataset, 1)
         self.max_step = max_step

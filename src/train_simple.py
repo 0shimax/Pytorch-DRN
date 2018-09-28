@@ -25,6 +25,7 @@ from model.environment_for_owndata import Environment
 #
 # args = parse_args()
 TARGET_UPDATE = 10
+ELIMINATE_UPDATE = 4
 file_name = 'eme_interactsions_June-July2018_NY_features.csv'
 root_dir = './raw'
 
@@ -32,15 +33,18 @@ root_dir = './raw'
 def main():
     n_target = 3000
     max_step = 100
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     train_env = Environment(file_name, root_dir,
                             n_target=n_target, max_step=max_step,
                             high_rate=.5, train=True)
-    train_agent = Agent(train_env.dim_in_feature, n_target)
+    train_agent = Agent(train_env.dim_in_feature, device, train_env.n_action)
+    n_target = train_env.n_action
 
     test_env = Environment(file_name, root_dir,
                            n_target=n_target, max_step=max_step,
                            high_rate=.9, train=False)
-    test_agent = Agent(test_env.dim_in_feature, n_target)
+    test_agent = Agent(test_env.dim_in_feature, device, test_env.n_action)
 
     assert train_env.dataset.user_features.shape[1:]==test_env.dataset.user_features.shape[1:],\
         "number of train features and test feature must be same"
@@ -57,7 +61,7 @@ def main():
         # train_agent.steps_done = 4000 if train_agent.steps_done > 4000 else train_agent.steps_done
         test_t_reward = 0
         for t in count():
-            state, target_features, current_user_id, target_ids = train_env.obs()
+            state, target_features, current_user_id, target_ids, eliminate_teacher_val = train_env.obs()
             # print(state.shape, target_features.shape)
             # print(current_user_id.item(), target_ids.numpy())
             assert len(target_features[0]) == n_target, "#target_ids must much n_target"
@@ -66,11 +70,11 @@ def main():
             action = train_agent.select_action(state, target_features)
             target_id = target_ids[:, action.item()]
             reward, done = train_env.step(current_user_id, target_id, t)
-            reward = torch.tensor([reward], device=train_agent.device)
+            reward = torch.tensor([reward], device=device)
 
             # Observe new state
             if not done:
-                next_state, _, _, _ = train_env.obs()
+                next_state, _, _, _, _ = train_env.obs()
             else:
                 next_state = None
 
@@ -83,6 +87,8 @@ def main():
 
             # Perform one step of the optimization (on the target network)
             loss = train_agent.optimize_model()
+            aen_loss = train_agent.optimize_aen(eliminate_teacher_val, state)
+
             t_reward += reward.data.item()
             if loss:
                 t_loss += loss
@@ -92,10 +98,9 @@ def main():
 
             train_agent.epsilon = (train_agent.epsilon - 1e-6) if train_agent.epsilon > 0.1 else 0.1
 
-        # print("1 train loop done")
         test_agent.policy_net.load_state_dict(train_agent.policy_net.state_dict())
         for t in count():
-            state, target_features, current_user_id, target_ids = test_env.obs()
+            state, target_features, current_user_id, target_ids, _ = test_env.obs()
             # Select and perform an action
             action5, action5_idxs =\
                 test_agent.select_action_for_test(state, target_features, n_best=5)
@@ -111,6 +116,10 @@ def main():
                 i_episode, t_reward, t_loss, test_t_reward))
             # Update the target network
             train_agent.update_target_network()
+
+        if i_episode % ELIMINATE_UPDATE == 0:
+            print('update values for eliminate')
+            train_agent.aen_update()
 
     print('Complete')
 
