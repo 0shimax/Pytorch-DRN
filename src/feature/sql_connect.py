@@ -2,9 +2,9 @@ import pymysql.cursors
 
 
 conn = pymysql.connect(host='127.0.0.1',
-                       user='shimada',
-                       password='nshimada!123',
-                       db='tabelog_production',
+                       user='xxxx',
+                       password='xxxxx',
+                       db='xxxx_xxxx',
                        charset='utf8mb4',
                        cursorclass=pymysql.cursors.DictCursor)
 
